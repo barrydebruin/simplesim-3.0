@@ -731,7 +731,9 @@ sim_main(void)
   enum md_opcode op;
   register int is_write;
   enum md_fault_type fault;
-
+  FILE *fp = fopen("./out_trace.txt", "w+");
+  fprintf(fp, "#,PC\n");
+  
   fprintf(stderr, "sim: ** starting functional simulation w/ caches **\n");
 
   /* set up initial default next PC */
@@ -758,7 +760,8 @@ sim_main(void)
 	cache_access(cache_il1, Read, IACOMPRESS(regs.regs_PC),
 		     NULL, ISCOMPRESS(sizeof(md_inst_t)), 0, NULL, NULL);
       MD_FETCH_INST(inst, mem, regs.regs_PC);
-
+      fprintf(fp, "%lli,%i\n", sim_num_insn, regs.regs_PC); // collect trace file...
+      
       /* keep an instruction count */
       sim_num_insn++;
 
