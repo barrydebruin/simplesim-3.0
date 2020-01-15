@@ -1,11 +1,14 @@
 #!/usr/bin/python3
+import io
 import os
 import sys
+import tempfile
 import ctypes
 import datetime
 import numpy as np
 import pandas as pd
 import numpy.ctypeslib as npct
+from contextlib import contextmanager
 from ctypes import CFUNCTYPE, POINTER, c_void_p, c_char, c_int, c_uint8, c_uint32, c_int32, c_int64
 from os.path import dirname, abspath, realpath, join, expanduser
 
@@ -19,12 +22,84 @@ sim_cache = npct.load_library('sim-cache.so', expanduser(libdir))
 LP_c_char = POINTER(c_char)
 LP_LP_c_char = POINTER(LP_c_char)
 
-# data types defined by cache-sim
+# Data types defined by cache-sim
 byte_t = c_uint8
 counter_t = c_int64
 tick_t = c_int64
 md_inst_t = c_int32
 md_addr_t = c_int32
+
+
+"""
+Utility functions for C printing in Jupyter notebook
+"""
+
+# Enable C printing
+FILE_p = ctypes.c_void_p
+
+# These variables, defined inside the C library, are readonly.
+cstdin = FILE_p.in_dll(sim_cache, 'stdin')
+cstdout = FILE_p.in_dll(sim_cache, 'stdout')
+cstderr = FILE_p.in_dll(sim_cache, 'stderr')
+
+# C function to disable buffering.
+csetbuf = sim_cache.setbuf
+csetbuf.argtypes = (FILE_p, ctypes.c_char_p)
+csetbuf.restype = None
+
+# C function to flush the C library buffer.
+cfflush = sim_cache.fflush
+cfflush.argtypes = (FILE_p,)
+cfflush.restype = ctypes.c_int
+
+@contextmanager
+def capture_c_stdout(encoding='utf8'):
+    # StackExchange - 35745541
+    # Flushing, it's a good practice.
+    sys.stdout.flush()
+    cfflush(cstdout)
+
+    # We need to use a actual file because we need the file descriptor number.
+    with tempfile.TemporaryFile(buffering=0) as temp:
+        # Saving a copy of the original stdout.
+        prev_sys_stdout = sys.stdout
+        prev_stdout_fd = os.dup(1)
+        os.close(1)
+
+        # Duplicating the temporary file fd into the stdout fd.
+        # In other words, replacing the stdout.
+        os.dup2(temp.fileno(), 1)
+
+        # Replacing sys.stdout for Python code.
+        #
+        # IPython Notebook version of sys.stdout is actually an
+        # in-memory OutStream, so it does not have a file descriptor.
+        # We need to replace sys.stdout so that interleaved Python
+        # and C output gets captured in the correct order.
+        #
+        # We enable line_buffering to force a flush after each line.
+        # And write_through to force all data to be passed through the
+        # wrapper directly into the binary temporary file.
+        temp_wrapper = io.TextIOWrapper(
+            temp, encoding=encoding, line_buffering=True, write_through=True)
+        sys.stdout = temp_wrapper
+
+        # Disabling buffering of C stdout.
+        csetbuf(cstdout, None)
+
+        yield
+
+        # Must flush to clear the C library buffer.
+        cfflush(cstdout)
+
+        # Restoring stdout.
+        os.dup2(prev_stdout_fd, 1)
+        os.close(prev_stdout_fd)
+        sys.stdout = prev_sys_stdout
+
+        # Printing the captured output.
+        temp_wrapper.seek(0)
+        print(temp_wrapper.read(), end='')
 
 
 """
@@ -67,10 +142,10 @@ def stat_new():
 
 def stat_print_stats(sdb):
     """ print the value of all stat variables in stat database SDB (stat.c) """
-    fd = ctypes.c_void_p.in_dll(sim_cache, 'stderr')
+    #fd = ctypes.c_void_p.in_dll(sim_cache, 'stderr')
     sim_cache.stat_print_stats.restype = None
     sim_cache.stat_print_stats.argtypes = [POINTER(stat_sdb_t), c_void_p]
-    return sim_cache.stat_print_stats(sdb, fd)
+    return sim_cache.stat_print_stats(sdb, cstdout)
 
 
 """
@@ -152,10 +227,10 @@ def cache_create(name, nsets, bsize, balloc, usize, assoc, policy, blk_access_fn
 
 def cache_config(cache):
     """ print cache info (cache.c) """
-    fd = ctypes.c_void_p.in_dll(sim_cache, 'stderr')
+    #fd = ctypes.c_void_p.in_dll(sim_cache, 'stderr')
     sim_cache.cache_config.restype = None
     sim_cache.cache_config.argtypes = [c_void_p, c_void_p]
-    return sim_cache.cache_config(cache, fd)
+    return sim_cache.cache_config(cache, cstdout)
 
 def cache_reg_stats(cp, sdb):
     """ register cache performance counters (cache.c) """

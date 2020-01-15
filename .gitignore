@@ -5,3 +5,4 @@
 *.a
 *.so
 out_trace.txt
+__pycache__
