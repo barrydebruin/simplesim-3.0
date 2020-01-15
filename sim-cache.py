@@ -52,7 +52,9 @@ def main(argc, argv, envp):
     return sim_cache.main(argc, argv, envp)
 
 
-"""
+
+
+"""
     Python bindings to Stat interface
 """
 
@@ -70,7 +72,8 @@ def stat_print_stats(sdb):
     sim_cache.stat_print_stats.argtypes = [POINTER(stat_sdb_t), c_void_p]
     return sim_cache.stat_print_stats(sdb, fd)
 
-"""
+
+"""
     Python bindings to Cache interface
 """
 
@@ -160,11 +163,11 @@ def cache_reg_stats(cp, sdb):
     sim_cache.cache_reg_stats.argtypes = [POINTER(cache_t), POINTER(stat_sdb_t)]
     return sim_cache.cache_reg_stats(cp, sdb)
 
-def cache_access(cp, cmd, addr, nbytes):
+def cache_access(cp, cmd, addr, nbytes, now=0):
     """ access the cache. returns relative cycle latency when data is available (cache.c). 
         Note: assumes 32-bit address and instruction.
     """
-    vp, now, udata, repl_data = None, 0, None, None
+    vp, udata, repl_data = None, None, None
     cmd_int = 0 if cmd == 'READ' else 'WRITE'
     sim_cache.cache_access.restype = c_uint32
     sim_cache.cache_access.argtypes = [POINTER(cache_t), c_int32, md_addr_t, 
@@ -172,7 +175,9 @@ def cache_access(cp, cmd, addr, nbytes):
     return sim_cache.cache_access(cp, cmd_int, addr, vp, nbytes, now, udata, repl_data)
 
 
-"""
+
+
+"""
     Main routine
 """
 
@@ -187,10 +192,10 @@ def il1_access_fn(cmd, baddr, bsize, blk, now):
     assert cmd == 0 or cmd == 1 # READ or WRITE
     if cache_il2:
         # access next level of inst cache hierarchy
-        return cache_access(cache_il2, cmd, baddr, bsize)
+        return cache_access(cache_il2, cmd, baddr, bsize, now)
     else:
         # access main memory, which is always done in the main simulator loop
-        return 1; # return access latency
+        return 5 # return access latency
 
 def test_simple():
     print("\n\n***** TEST CACHE *****")
@@ -249,10 +254,14 @@ def test_trace():
     cache_reg_stats(cache_il1, sim_sdb)
     
     # Execute instruction trace
+    now = 0
+    #misses = 0
     nbytes = ctypes.sizeof(md_inst_t) # 4 bytes/instruction
-    for pc in df.PC:
-        cache_access(cache_il1, 'READ', pc, nbytes)
-    
+    for i,pc in enumerate(df.PC):
+        lat = cache_access(cache_il1, 'READ', pc, nbytes, now) # lat(ency) is the time it takes to get the access
+        now += lat # update time
+        #if lat > 1: misses += 1
+        #print("{}: read addr: {}, latency: {}".format(i, pc, lat))
     print("\nExpected output (partial):")
     print("il1.accesses                  53459 # total number of accesses") # word hits + word misses
     print("il1.hits                      47366 # total number of hits") # = word hits
@@ -362,7 +371,8 @@ mem.ptab_miss_rate           0.0000 # first level page table miss rate
     """
 
 
-if __name__ == "__main__":
+
+if __name__ == "__main__":
     # Small test case to check if Cache functionality works.
     #
     # 1. First run a normal cache simulation. Something like this:
