@@ -282,8 +282,9 @@ cache_create(char *name,		/* name of the cache */
   if ((nsets & (nsets-1)) != 0)
     fatal("cache size (in sets) `%d' is not a power of two", nsets);
   /* blocks must be at least one datum large, i.e., 8 bytes for SS */
-  if (bsize < 8)
-    fatal("cache block size (in bytes) `%d' must be 8 or greater", bsize);
+  /* Barry: changed to 4 bytes for 32-bit wide cache simulation */
+  if (bsize < 4)
+    fatal("cache block size (in bytes) `%d' must be 4 or greater", bsize);
   if ((bsize & (bsize-1)) != 0)
     fatal("cache block size (in bytes) `%d' must be a power of two", bsize);
   if (usize < 0)

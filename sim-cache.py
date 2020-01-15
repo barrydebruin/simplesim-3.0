@@ -160,11 +160,11 @@ def cache_reg_stats(cp, sdb):
     sim_cache.cache_reg_stats.argtypes = [POINTER(cache_t), POINTER(stat_sdb_t)]
     return sim_cache.cache_reg_stats(cp, sdb)
 
-def cache_access(cp, cmd, addr):
+def cache_access(cp, cmd, addr, nbytes):
     """ access the cache. returns relative cycle latency when data is available (cache.c). 
         Note: assumes 32-bit address and instruction.
     """
-    vp, nbytes, now, udata, repl_data = None, ctypes.sizeof(md_inst_t), 0, None, None
+    vp, now, udata, repl_data = None, 0, None, None
     cmd_int = 0 if cmd == 'READ' else 'WRITE'
     sim_cache.cache_access.restype = c_uint32
     sim_cache.cache_access.argtypes = [POINTER(cache_t), c_int32, md_addr_t, 
@@ -187,7 +187,7 @@ def il1_access_fn(cmd, baddr, bsize, blk, now):
     assert cmd == 0 or cmd == 1 # READ or WRITE
     if cache_il2:
         # access next level of inst cache hierarchy
-        return cache_access(cache_il2, cmd, baddr)
+        return cache_access(cache_il2, cmd, baddr, bsize)
     else:
         # access main memory, which is always done in the main simulator loop
         return 1; # return access latency
@@ -223,7 +223,7 @@ def il1_access_fn(cmd, baddr, bsize, blk, now):
         
         # Create cache
         # l1 I-cache params: <name>:<nsets>:<bsize>:<assoc>:<repl>
-        name, nsets, bsize, assoc, repl = "il1", 256, 32, 1, cache_char2policy(b'l') 
+        name, nsets, bsize, assoc, repl = "il1", 256, 8, 1, cache_char2policy(b'l') 
         cache_il1 = cache_create(name, nsets, bsize, False, 0, assoc, repl, il1_access_fn, 1)
         cache_config(cache_il1) # check if correctly constructed
         
@@ -231,13 +231,25 @@ def il1_access_fn(cmd, baddr, bsize, blk, now):
         cache_reg_stats(cache_il1, sim_sdb)
         stat_print_stats(sim_sdb)
         
-        # Access the Cache
-        pc = df.PC[0]
-        cache_access(cache_il1, 'READ', pc)
+        nbytes = ctypes.sizeof(md_inst_t) # 4 bytes/instruction
         
-        print("TEST")
+        print("\n\nAccess the cache 3 times to the same word...")
+        pc = df.PC[0]
+        cache_access(cache_il1, 'READ', pc, nbytes)
+        cache_access(cache_il1, 'READ', pc, nbytes)
+        cache_access(cache_il1, 'READ', pc, nbytes) # 1 miss, 2 hits
         stat_print_stats(sim_sdb)
         
-        cache_access(cache_il1, 'READ', pc)
-        print("TEST")
+        print("\n\nAccess the cache 3 times to the next word (same block)...")
+        pc += 4
+        cache_access(cache_il1, 'READ', pc, nbytes)
+        cache_access(cache_il1, 'READ', pc, nbytes)
+        cache_access(cache_il1, 'READ', pc, nbytes) # 1 miss, 5 hits
+        stat_print_stats(sim_sdb)
+        
+        print("\n\nAccess the cache 3 times to the next word...")
+        pc += 4
+        cache_access(cache_il1, 'READ', pc, nbytes)
+        cache_access(cache_il1, 'READ', pc, nbytes)
+        cache_access(cache_il1, 'READ', pc, nbytes) # 2 miss, 7 hits
         stat_print_stats(sim_sdb)
