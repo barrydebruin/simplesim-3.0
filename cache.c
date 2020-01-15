@@ -531,7 +531,7 @@ cache_access(struct cache_t *cp,	/* cache to access */
   /* permissions are checked on cache misses */
 
   /* check for a fast hit: access to same block */
-  if (CACHE_TAGSET(cp, addr) == cp->last_tagset)
+  if (CACHE_TAGSET(cp, addr) == cp->last_tagset && cp->hits > 0)
     {
       /* hit in the same block */
       blk = cp->last_blk;
